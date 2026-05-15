@@ -623,6 +623,7 @@ bool lovrHeadsetConnect(void) {
   if (getSystemRes == XR_ERROR_FORM_FACTOR_UNAVAILABLE) {
     lovrLog(LOG_INFO, "XR", "Got XR_ERROR_FORM_FACTOR_UNAVAILABLE, retrying until xrGetSystem succeeds");
     while (getSystemRes == XR_ERROR_FORM_FACTOR_UNAVAILABLE) {
+      // Wait for 1 second before retrying.
       os_sleep(1.0);
       getSystemRes = xrGetSystem(state.instance, &systemInfo, &state.system);
     }
