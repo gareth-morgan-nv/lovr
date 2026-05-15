@@ -42,6 +42,7 @@ local conf = {
     connect = true,
     start = true,
     debug = false,
+    connectmode = 'simulator',
     seated = false,
     mask = true,
     stencil = false,
@@ -156,9 +157,11 @@ function lovr.boot()
   end
 
   if lovr.headset and conf.headset.connect then
-    local ok, message = lovr.headset.connect()
-    if not ok and conf.headset.debug then
-      lovr.log(string.format('Could not connect to headset, falling back to simulator (%s)', message), 'warn', 'XR')
+    local result, message = lovr.headset.connect()
+    if result == 'simulator' and conf.headset.debug then
+      lovr.log(string.format('Could not connect to headset, falling back to simulator (%s)', message or ''), 'warn', 'XR')
+    elseif result == 'failure' and conf.headset.debug then
+      lovr.log(string.format('Headset connect failed (%s)', message or ''), 'warn', 'XR')
     end
   end
 

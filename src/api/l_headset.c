@@ -4,6 +4,7 @@
 #include "data/modelData.h"
 #include "graphics/graphics.h"
 #include "core/maf.h"
+#include "timer/timer.h"
 #include "util.h"
 #include <stdlib.h>
 
@@ -11,6 +12,13 @@ StringEntry lovrControllerSkeletonMode[] = {
   [SKELETON_NONE] = ENTRY("none"),
   [SKELETON_CONTROLLER] = ENTRY("controller"),
   [SKELETON_NATURAL] = ENTRY("natural"),
+  { 0 }
+};
+
+StringEntry lovrHeadsetConnectBehavior[] = {
+  [HEADSET_CONNECT_BEHAVIOR_STOP_ON_ERROR] = ENTRY("stop_on_error"),
+  [HEADSET_CONNECT_BEHAVIOR_RETRY] = ENTRY("retry"),
+  [HEADSET_CONNECT_BEHAVIOR_SIMULATOR] = ENTRY("simulator"),
   { 0 }
 };
 
@@ -106,7 +114,40 @@ static Device luax_optdevice(lua_State* L, int index) {
 }
 
 static int l_lovrHeadsetConnect(lua_State* L) {
-  return luax_pushsuccess(L, lovrHeadsetConnect());
+  HeadsetConnectBehavior behavior = lua_isnoneornil(L, 1)
+    ? lovrHeadsetGetConnectBehavior()
+    : (HeadsetConnectBehavior) luax_checkenum(L, 1, HeadsetConnectBehavior, NULL);
+
+  for (;;) {
+    HeadsetConnectResult r = lovrHeadsetConnect();
+    if (r == HEADSET_CONNECT_SUCCESS) {
+      lua_pushliteral(L, "success");
+      lua_pushnil(L);
+      return 2;
+    }
+
+    if (r == HEADSET_CONNECT_FORM_FACTOR_UNAVAILABLE) {
+      const char* err = lovrGetError();
+      if (behavior == HEADSET_CONNECT_BEHAVIOR_STOP_ON_ERROR) {
+        lua_pushliteral(L, "temporary");
+        lua_pushstring(L, err);
+        return 2;
+      }
+      lovrTimerSleep(1.);
+      continue;
+    }
+
+    const char* err = lovrGetError();
+    if (behavior == HEADSET_CONNECT_BEHAVIOR_SIMULATOR) {
+      lua_pushliteral(L, "simulator");
+      lua_pushstring(L, err);
+      return 2;
+    }
+
+    lua_pushliteral(L, "failure");
+    lua_pushstring(L, err);
+    return 2;
+  }
 }
 
 static int l_lovrHeadsetGetName(lua_State* L) {
@@ -1098,7 +1139,8 @@ int luaopen_lovr_headset(lua_State* L) {
     .submitDepth = true,
     .overlay = false,
     .overlayOrder = 0,
-    .controllerSkeleton = SKELETON_CONTROLLER
+    .controllerSkeleton = SKELETON_CONTROLLER,
+    .connectBehavior = HEADSET_CONNECT_BEHAVIOR_SIMULATOR
   };
 
   luax_pushconf(L);
@@ -1144,6 +1186,10 @@ int luaopen_lovr_headset(lua_State* L) {
 
       lua_getfield(L, -1, "controllerskeleton");
       if (!lua_isnil(L, -1)) config.controllerSkeleton = luax_checkenum(L, -1, ControllerSkeletonMode, NULL);
+      lua_pop(L, 1);
+
+      lua_getfield(L, -1, "connectmode");
+      if (!lua_isnil(L, -1)) config.connectBehavior = luax_checkenum(L, -1, HeadsetConnectBehavior, NULL);
       lua_pop(L, 1);
 
       lua_getfield(L, -1, "extensions");

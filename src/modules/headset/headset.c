@@ -55,6 +55,7 @@ uintptr_t gpu_vk_get_queue(uint32_t* queueFamilyIndex, uint32_t* queueIndex);
 
 #define XR(f, s) do { XrResult r = f; if (XR_FAILED(r)) { xrthrow(r, s); return 0; } } while(0)
 #define XRG(f, s, j) do { XrResult r = f; if (XR_FAILED(r)) { xrthrow(r, s); goto j; } } while(0)
+#define XR_CONN(f, s) do { XrResult xr_conn_r = (f); if (XR_FAILED(xr_conn_r)) { xrthrow(xr_conn_r, s); goto fail; } } while(0)
 #define SESSION_RUNNING(s) (s >= XR_SESSION_STATE_READY && s <= XR_SESSION_STATE_FOCUSED)
 #define MAX_IMAGES 4
 #define MAX_HAND_JOINTS 27
@@ -430,9 +431,9 @@ void lovrHeadsetDestroy(void) {
   lovrModuleReset(&ref);
 }
 
-bool lovrHeadsetConnect(void) {
+HeadsetConnectResult lovrHeadsetConnect(void) {
   if (state.system) {
-    return true;
+    return HEADSET_CONNECT_SUCCESS;
   }
 
   HeadsetConfig* config = &state.config;
@@ -453,7 +454,7 @@ bool lovrHeadsetConnect(void) {
   };
 
   if (XR_FAILED(xrInitializeLoaderKHR((XrLoaderInitInfoBaseHeaderKHR*) &loaderInfo))) {
-    return true;
+    return HEADSET_CONNECT_SUCCESS;
   }
 #elif defined(__linux__) || defined(__APPLE__)
   if (!config->debug) {
@@ -468,7 +469,7 @@ bool lovrHeadsetConnect(void) {
   // Extensions
 
   uint32_t extensionCount = 0;
-  XR(xrEnumerateInstanceExtensionProperties(NULL, 0, &extensionCount, NULL), "xrEnumerateInstanceExtensionProperties");
+  XR_CONN(xrEnumerateInstanceExtensionProperties(NULL, 0, &extensionCount, NULL), "xrEnumerateInstanceExtensionProperties");
 
   XrExtensionProperties* extensionProperties = lovrCalloc(extensionCount * sizeof(*extensionProperties));
   for (uint32_t i = 0; i < extensionCount; i++) extensionProperties[i].type = XR_TYPE_EXTENSION_PROPERTIES;
@@ -584,7 +585,7 @@ bool lovrHeadsetConnect(void) {
     .enabledExtensionNames = enabledExtensionNames
   };
 
-  XR(xrCreateInstance(&instanceInfo, &state.instance), "xrCreateInstance");
+  XR_CONN(xrCreateInstance(&instanceInfo, &state.instance), "xrCreateInstance");
   lovrFree(enabledExtensionNames);
 
   XR_FOREACH(XR_LOAD)
@@ -616,17 +617,14 @@ bool lovrHeadsetConnect(void) {
     .formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY
   };
 
-  // OpenXR xrGetSystem: XR_ERROR_FORM_FACTOR_UNAVAILABLE means supported but temporarily
-  // unavailable; the runtime may return XR_SUCCESS on a later call (e.g. connect/warm-up).
+  // XR_ERROR_FORM_FACTOR_UNAVAILABLE: supported but temporarily unavailable (OpenXR xrGetSystem).
+  // Return HEADSET_CONNECT_FORM_FACTOR_UNAVAILABLE so Lua can retry, fail, or fall back to simulator.
   // https://registry.khronos.org/OpenXR/specs/1.1/man/html/xrGetSystem.html
   XrResult getSystemRes = xrGetSystem(state.instance, &systemInfo, &state.system);
   if (getSystemRes == XR_ERROR_FORM_FACTOR_UNAVAILABLE) {
-    lovrLog(LOG_INFO, "XR", "Got XR_ERROR_FORM_FACTOR_UNAVAILABLE, retrying until xrGetSystem succeeds");
-    while (getSystemRes == XR_ERROR_FORM_FACTOR_UNAVAILABLE) {
-      // Wait for 1 second before retrying.
-      os_sleep(1.0);
-      getSystemRes = xrGetSystem(state.instance, &systemInfo, &state.system);
-    }
+    lovrSetError("OpenXR headset is temporarily unavailable (XR_ERROR_FORM_FACTOR_UNAVAILABLE)");
+    disconnect();
+    return HEADSET_CONNECT_FORM_FACTOR_UNAVAILABLE;
   }
   XRG(getSystemRes, "xrGetSystem", fail);
 
@@ -1529,10 +1527,14 @@ bool lovrHeadsetConnect(void) {
   }
 
   state.frameState.type = XR_TYPE_FRAME_STATE;
-  return true;
+  return HEADSET_CONNECT_SUCCESS;
 fail:
   disconnect();
-  return false;
+  return HEADSET_CONNECT_FAILED;
+}
+
+HeadsetConnectBehavior lovrHeadsetGetConnectBehavior(void) {
+  return state.config.connectBehavior;
 }
 
 bool lovrHeadsetIsConnected(void) {

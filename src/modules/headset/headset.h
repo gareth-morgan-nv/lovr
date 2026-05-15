@@ -21,6 +21,18 @@ typedef enum {
   SKELETON_NATURAL
 } ControllerSkeletonMode;
 
+typedef enum {
+  HEADSET_CONNECT_SUCCESS,
+  HEADSET_CONNECT_FAILED,
+  HEADSET_CONNECT_FORM_FACTOR_UNAVAILABLE
+} HeadsetConnectResult;
+
+typedef enum {
+  HEADSET_CONNECT_BEHAVIOR_STOP_ON_ERROR,
+  HEADSET_CONNECT_BEHAVIOR_RETRY,
+  HEADSET_CONNECT_BEHAVIOR_SIMULATOR
+} HeadsetConnectBehavior;
+
 typedef struct {
   float supersample;
   bool debug;
@@ -32,6 +44,7 @@ typedef struct {
   bool overlay;
   uint32_t overlayOrder;
   ControllerSkeletonMode controllerSkeleton;
+  HeadsetConnectBehavior connectBehavior;
   uint32_t extensionCount;
   char* extensions;
 } HeadsetConfig;
@@ -178,7 +191,8 @@ typedef enum {
 
 bool lovrHeadsetInit(HeadsetConfig* config);
 void lovrHeadsetDestroy(void);
-bool lovrHeadsetConnect(void);
+HeadsetConnectResult lovrHeadsetConnect(void);
+HeadsetConnectBehavior lovrHeadsetGetConnectBehavior(void);
 bool lovrHeadsetIsConnected(void);
 bool lovrHeadsetGetName(char* name, size_t length);
 bool lovrHeadsetGetDriver(char* name, size_t length);
